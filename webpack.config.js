@@ -1,4 +1,5 @@
 const path = require('path');
+const HtmlWebPackPlugin = require('html-webpack-plugin');
 
 const config = {
   entry: './src/index.js',
@@ -28,8 +29,21 @@ const config = {
           loader: 'babel-loader',
         },
       },
+      {
+        test: /\.css$/,
+        use: [
+          'style-loader',
+          'css-loader',
+        ]
+      },
     ],
   },
+  plugins: [
+    new HtmlWebPackPlugin({
+      template: './public/index.html',
+      filename: './index.html'
+    })
+  ]
 };
 
 module.exports = config;
