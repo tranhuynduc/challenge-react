@@ -1,132 +1,128 @@
 import React, { Component } from 'react';
 import { connect } from 'react-redux';
-import styled from 'styled-components';
-import fetch from 'isomorphic-fetch';
-
-import { summaryDonations } from '../../helpers';
+import { updateMessage, updateTotalDonate, fetchPayments, addPayments, fetchCharities } from './actions';
 import { Container, Main, Row } from '../../components/Layout';
 import Header from '../../components/Header';
 import Card from '../../components/Card';
 import Payment from '../../components/Payment';
 import { Text } from '../../components/Typography';
+import configs from '../../configs';
+import Message from '../../components/Message';
 
-export default connect((state) => state)(
-  class App extends Component {
-    constructor(props) {
-      super();
+class App extends Component {
+  constructor() {
+    super();
 
-      this.state = {
-        charities: [],
-        selectedAmount: {},
-        selectedPaymentID: null,
-      };
-    }
+    this.state = {
+      listAmount: configs.LIST_AMOUNT,
+      charities: [],
+      amount: configs.DEFAULT_DONATE,
+      selectedAmount: {},
+    };
 
-    componentDidMount() {
-      const self = this;
-      fetch('http://localhost:3001/charities')
-        .then(function (resp) { return resp.json(); })
-        .then(function (data) {
-          self.setState({ charities: data })
-        });
-
-      fetch('http://localhost:3001/payments')
-        .then(function (resp) { return resp.json() })
-        .then(function (data) {
-          self.props.dispatch({
-            type: 'UPDATE_TOTAL_DONATE',
-            amount: summaryDonations(data.map((item) => (item.amount))),
-          });
-        })
-    }
-
-
-    handlePay = (id, currency) => {
-      const { amount } = this.state;
-      const self = this;
-      return function () {
-        fetch('http://localhost:3001/payments', {
-          method: 'POST',
-          body: `{ "charitiesId": ${id}, "amount": ${amount}, "currency": "${currency}" }`,
-        })
-          .then(function (resp) { return resp.json(); })
-          .then(function () {
-            self.props.dispatch({
-              type: 'UPDATE_TOTAL_DONATE',
-              amount,
-            });
-            self.props.dispatch({
-              type: 'UPDATE_MESSAGE',
-              message: `Thanks for donate ${amount}!`,
-            });
-
-            setTimeout(function () {
-              self.props.dispatch({
-                type: 'UPDATE_MESSAGE',
-                message: '',
-              });
-            }, 2000);
-          });
-      }
-    }
-
-    handleSelectPayment = (amount) => {
-      const { selectedAmount, selectedPaymentID } = this.state;
-      selectedAmount[selectedPaymentID] = amount;
-      this.setState({
-        selectedAmount,
-      })
-    }
-
-    handleTogglenPayment = (id) => {
-      this.setState({
-        selectedPaymentID: id,
-      })
-    }
-
-    renderCharities = () => {
-      const { charities, selectedPaymentID  } = this.state;
-      const listAmount = [10, 20, 50, 100, 500];
-      return charities.map(item => {
-        return (
-          <Card
-            key={item.id}
-            {...item}
-            openPayment={this.handleTogglenPayment}
-          >
-            <Payment
-              itemID={item.id}
-              handleClose={this.handleTogglenPayment}
-              handleSelectPayment={this.handleSelectPayment}
-              isOpen={selectedPaymentID === item.id}
-              handlePay={this.handlePay}
-              currency={item.currency}
-              listAmount={listAmount}
-            />
-          </Card>
-        )
-      });
-    }
-
-    render() {
-      const donate = this.props.donate;
-      const message = this.props.message;
-
-      return (
-        <React.Fragment >
-          <Header donate={donate} />
-          <Main>
-            <Container>
-              <Text>{message}</Text>
-              <Row>
-                {this.renderCharities()}
-              </Row>
-            </Container>
-          </Main>
-
-        </React.Fragment>
-      );
-    }
+    this.msgTimeout = null;
   }
-);
 
+  componentDidMount() {
+    this.props.fetchPayments();
+    this.props.fetchCharities()
+      .then((data) => {
+        this.setState({ charities: data });
+      });
+  }
+
+  handlePay = (id, currency) => {
+    const { selectedAmount } = this.state;
+    const amount = selectedAmount[id] ? selectedAmount[id] : configs.DEFAULT_DONATE;
+
+    this.props.addPayments(id, currency, amount)
+      .then(() => {
+        this.props.updateTotalDonate(amount);
+        this.props.updateMessage(`Thanks for donate ${amount} ${currency}!`);
+
+        if (this.msgTimeout) {
+          clearTimeout(this.msgTimeout);
+        }
+
+        this.msgTimeout = setTimeout(() => {
+          this.props.updateMessage('');
+        }, 2000);
+      });
+
+
+    this.setState({
+      selectedPaymentID: null,
+    })
+  }
+
+  handleSelectPayment = (amount) => {
+    const { selectedAmount, selectedPaymentID } = this.state;
+    selectedAmount[selectedPaymentID] = amount;
+    this.setState({
+      selectedAmount,
+    })
+  }
+
+  handleTogglenPayment = (id) => {
+    this.setState({
+      selectedPaymentID: id,
+    })
+  }
+
+  renderCharities = () => {
+    const { charities, selectedPaymentID } = this.state;
+    const listAmount = [10, 20, 50, 100, 500];
+    return charities.map(item => {
+      return (
+        <Card
+          key={item.id}
+          {...item}
+          openPayment={this.handleTogglenPayment}
+        >
+          <Payment
+            itemID={item.id}
+            handleClose={this.handleTogglenPayment}
+            handleSelectPayment={this.handleSelectPayment}
+            isOpen={selectedPaymentID === item.id}
+            handlePay={this.handlePay}
+            currency={item.currency}
+            listAmount={listAmount}
+          />
+        </Card>
+      )
+    });
+  }
+
+  render() {
+    const { donate, message } = this.props;
+
+    return (
+      <React.Fragment >
+        <Header donate={donate} />
+        <Main>
+          <Container>
+            <Message message={message} />
+            <Row>
+              {this.renderCharities()}
+            </Row>
+          </Container>
+        </Main>
+
+      </React.Fragment>
+    );
+  }
+}
+
+const mapStateToProps = state => state
+
+const mapDispatchToProps = (dispatch) => {
+  return {
+    updateMessage: message => dispatch(updateMessage(message)),
+    updateTotalDonate: amount => dispatch(updateTotalDonate(amount)),
+    addPayments: (id, currency, amount) => dispatch(addPayments(id, currency, amount)),
+    fetchPayments: () => dispatch(fetchPayments()),
+    fetchCharities: () => dispatch(fetchCharities()),
+  }
+}
+
+export default connect(mapStateToProps, mapDispatchToProps)(App);
