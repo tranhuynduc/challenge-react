@@ -4,14 +4,11 @@ import styled from 'styled-components';
 import fetch from 'isomorphic-fetch';
 
 import { summaryDonations } from '../../helpers';
-import { Container } from '../../components/Layout';
-import Text from '../../components/Typography/Text';
-
-
-const Card = styled.div`
-  margin: 10px;
-  border: 1px solid #ccc;
-`;
+import { Container, Main, Row } from '../../components/Layout';
+import Header from '../../components/Header';
+import Card from '../../components/Card';
+import Payment from '../../components/Payment';
+import { Text } from '../../components/Typography';
 
 export default connect((state) => state)(
   class App extends Component {
@@ -20,7 +17,8 @@ export default connect((state) => state)(
 
       this.state = {
         charities: [],
-        selectedAmount: 10,
+        selectedAmount: {},
+        selectedPaymentID: null,
       };
     }
 
@@ -42,47 +40,89 @@ export default connect((state) => state)(
         })
     }
 
-    render() {
+
+    handlePay = (id, currency) => {
+      const { amount } = this.state;
       const self = this;
-      const cards = this.state.charities.map(function (item, i) {
-        const payments = [10, 20, 50, 100, 500].map((amount, j) => (
-          <label key={j}>
-            <input
-              type="radio"
-              name="payment"
-              onClick={function () {
-                self.setState({ selectedAmount: amount })
-              }} /> {amount}
-          </label>
-        ));
+      return function () {
+        fetch('http://localhost:3001/payments', {
+          method: 'POST',
+          body: `{ "charitiesId": ${id}, "amount": ${amount}, "currency": "${currency}" }`,
+        })
+          .then(function (resp) { return resp.json(); })
+          .then(function () {
+            self.props.dispatch({
+              type: 'UPDATE_TOTAL_DONATE',
+              amount,
+            });
+            self.props.dispatch({
+              type: 'UPDATE_MESSAGE',
+              message: `Thanks for donate ${amount}!`,
+            });
 
+            setTimeout(function () {
+              self.props.dispatch({
+                type: 'UPDATE_MESSAGE',
+                message: '',
+              });
+            }, 2000);
+          });
+      }
+    }
+
+    handleSelectPayment = (amount) => {
+      const { selectedAmount, selectedPaymentID } = this.state;
+      selectedAmount[selectedPaymentID] = amount;
+      this.setState({
+        selectedAmount,
+      })
+    }
+
+    handleTogglenPayment = (id) => {
+      this.setState({
+        selectedPaymentID: id,
+      })
+    }
+
+    renderCharities = () => {
+      const { charities, selectedPaymentID  } = this.state;
+      const listAmount = [10, 20, 50, 100, 500];
+      return charities.map(item => {
         return (
-          <Card key={i}>
-            <p>{item.name}</p>
-            {payments}
-            <button onClick={handlePay.call(self, item.id, self.state.selectedAmount, item.currency)}>Pay</button>
+          <Card
+            key={item.id}
+            {...item}
+            openPayment={this.handleTogglenPayment}
+          >
+            <Payment
+              itemID={item.id}
+              handleClose={this.handleTogglenPayment}
+              handleSelectPayment={this.handleSelectPayment}
+              isOpen={selectedPaymentID === item.id}
+              handlePay={this.handlePay}
+              currency={item.currency}
+              listAmount={listAmount}
+            />
           </Card>
-        );
+        )
       });
+    }
 
+    render() {
       const donate = this.props.donate;
       const message = this.props.message;
 
       return (
-        <React.Fragment>
-          <header>
-            <Container>
-
-              <h1>Tamboon React</h1>
-              <Text>All donations: {donate}</Text>
-            </Container>
-          </header>
-          <main>
+        <React.Fragment >
+          <Header donate={donate} />
+          <Main>
             <Container>
               <Text>{message}</Text>
-              {cards}
+              <Row>
+                {this.renderCharities()}
+              </Row>
             </Container>
-          </main>
+          </Main>
 
         </React.Fragment>
       );
@@ -90,30 +130,3 @@ export default connect((state) => state)(
   }
 );
 
-function handlePay(id, amount, currency) {
-  const self = this;
-  return function () {
-    fetch('http://localhost:3001/payments', {
-      method: 'POST',
-      body: `{ "charitiesId": ${id}, "amount": ${amount}, "currency": "${currency}" }`,
-    })
-      .then(function (resp) { return resp.json(); })
-      .then(function () {
-        self.props.dispatch({
-          type: 'UPDATE_TOTAL_DONATE',
-          amount,
-        });
-        self.props.dispatch({
-          type: 'UPDATE_MESSAGE',
-          message: `Thanks for donate ${amount}!`,
-        });
-
-        setTimeout(function () {
-          self.props.dispatch({
-            type: 'UPDATE_MESSAGE',
-            message: '',
-          });
-        }, 2000);
-      });
-  }
-}
